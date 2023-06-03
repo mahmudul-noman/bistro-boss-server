@@ -2,8 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 require('dotenv').config()
-
-
+const stripe = require('stripe')(process.env.PAYMENT_SECRET_KEY);
 const port = process.env.PORT || 5000;
 
 // middleware
@@ -52,6 +51,7 @@ async function run() {
         const menuCollection = client.db('bistroDb').collection('menu')
         const reviewsCollection = client.db('bistroDb').collection('reviews')
         const cartsCollection = client.db('bistroDb').collection('carts')
+        const paymentCollection = client.db('bistroDb').collection('payments')
 
 
 
@@ -165,7 +165,7 @@ async function run() {
             res.send(result);
         })
 
-        
+
 
         // reviews collection apis
         app.get('/reviews', async (req, res) => {
@@ -207,8 +207,6 @@ async function run() {
 
 
 
-
-
         app.post('/carts', async (req, res) => {
             const item = req.body;
             console.log(item);
@@ -229,6 +227,34 @@ async function run() {
 
 
 
+        // Create payment intent
+        app.post('/create-payment-intent', verifyJWT, async (req, res) => {
+            const { price } = req.body;
+            const amount = parseInt(price * 100);
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ['card']
+            });
+
+            res.send({
+                clientSecret: paymentIntent.client_secret
+            })
+        })
+
+
+
+        app.post('/payments', verifyJWT, async (req, res) => {
+            const payment = req.body;
+            const insertResult = await paymentCollection.insertOne(payment);
+
+
+            const query = { _id: { $in: payment.cartItems.map(id => new ObjectId(id)) } }
+            const deleteResult = await cartsCollection.deleteMany(query);
+
+
+            res.send({insertResult, deleteResult});
+        })
 
 
 
